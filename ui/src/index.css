@@ -1,8 +1,11 @@
+@import "tailwindcss";
+
 body {
   user-select: none;
   -webkit-user-select: none;
 }
 
-img, a {
+img,
+a {
   -webkit-user-drag: none;
 }

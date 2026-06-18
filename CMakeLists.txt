@@ -7,7 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 add_executable(app src/main.cpp)
 
-# Oculta la consola negra en Windows
+target_compile_definitions(app PRIVATE
+  $<$<CONFIG:Debug>:DEBUG>
+)
+
 set_target_properties(app PROPERTIES WIN32_EXECUTABLE TRUE)
 
 target_include_directories(app PRIVATE ${CMAKE_SOURCE_DIR}/include)
@@ -26,48 +29,33 @@ target_link_libraries(app PRIVATE
 
 target_link_libraries(app PRIVATE ${CMAKE_SOURCE_DIR}/lib/libWebView2Loader.a)
 
-# ==========================================
-# --- INTEGRACIÓN VITE & NODE.JS ---
-# ==========================================
+find_program(PNPM_EXECUTABLE NAMES pnpm pnpm.cmd REQUIRED)
 
-# 1. Buscar npm de forma cruzada (npm.cmd es vital para Windows)
-find_program(NPM_EXECUTABLE NAMES npm npm.cmd REQUIRED)
-
-# 2. Instalación automática: Si existe la carpeta ui pero no los node_modules, hace install
 if(EXISTS "${CMAKE_SOURCE_DIR}/ui" AND NOT EXISTS "${CMAKE_SOURCE_DIR}/ui/node_modules")
-    message(STATUS "Dependencias faltantes detectadas: Ejecutando 'npm install' en /ui...")
+    message(STATUS "Dependencias faltantes detectadas: Ejecutando 'pnpm install' en /ui...")
     execute_process(
-        COMMAND ${NPM_EXECUTABLE} install
+        COMMAND ${PNPM_EXECUTABLE} install
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/ui
-        RESULT_VARIABLE NPM_RESULT
+        RESULT_VARIABLE PNPM_RESULT
     )
-    if(NOT NPM_RESULT EQUAL 0)
-        message(FATAL_ERROR "Fallo la instalación de paquetes npm. Revisa tu conexión o package.json.")
+    if(NOT PNPM_RESULT EQUAL 0)
+        message(FATAL_ERROR "Fallo la instalacion de paquetes con pnpm. Revisa tu entorno o package.json.")
     endif()
 endif()
 
-# 3. Target del Frontend: Dispara el empaquetado de Vite
 add_custom_target(build_ui
-    COMMAND ${NPM_EXECUTABLE} run build
+    COMMAND ${PNPM_EXECUTABLE} run build
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/ui
     COMMENT "Empaquetando frontend moderno con Vite..."
 )
 
-# 4. Sincronización: Obliga a CMake a esperar a que termine 'build_ui' antes de dar por listo 'app'
 add_dependencies(app build_ui)
 
-# ==========================================
-# --- ENSAMBLADO Y DISTRIBUCIÓN (POST-BUILD) ---
-# ==========================================
-
-# 5. Mover todo a su lugar al terminar la compilación
 add_custom_command(TARGET app POST_BUILD
-    # Copia el resultado minificado de Vite (ui/dist) y lo pega como 'ui' junto al .exe
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/ui/dist
     $<TARGET_FILE_DIR:app>/ui
     
-    # Copia el cargador dinámico de Microsoft para evitar el crash silencioso al abrir
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
     ${CMAKE_SOURCE_DIR}/lib/WebView2Loader.dll
     $<TARGET_FILE_DIR:app>/WebView2Loader.dll
